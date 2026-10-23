@@ -1,16 +1,23 @@
 -- First Is Owner | FIO Hub starter
 -- Client utilities and optional F3X BTools actions. Server permissions still apply.
-local PLACE_ID = 130496219537579
-if game.PlaceId ~= PLACE_ID then
-    warn("[FIO] Wrong experience; expected First Is Owner.")
-    return
+local MAIN_PLACE_ID = 130496219537579
+local UNIVERSE_ID = 7706951053
+if game.PlaceId ~= MAIN_PLACE_ID and game.GameId ~= UNIVERSE_ID then
+    warn("[FIO] This doesn't appear to be First Is Owner (PlaceId="
+        .. tostring(game.PlaceId) .. ", GameId=" .. tostring(game.GameId) .. ")")
+    -- Still show the hub so errors can be diagnosed instead of silently exiting.
 end
 
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
-if not localPlayer then return end
+if not localPlayer then
+    localPlayer = Players:GetPropertyChangedSignal("LocalPlayer"):Wait() and Players.LocalPlayer
+end
+if not localPlayer then
+    error("[FIO] LocalPlayer unavailable; run in a client session")
+end
 
 local environment = (type(getgenv) == "function" and getgenv()) or _G
 if environment.FIO_HUB and type(environment.FIO_HUB.Destroy) == "function" then
@@ -1024,7 +1031,7 @@ local function startGlitchTitle()
         Font = Enum.Font.GothamBold,
         TextColor3 = WHITE
     }, titleBillboard)
-    local frames = {"OWNER??", "0WN3R", "O W N E R", "#ERROR", "OWNER //", "0\u0338W\u0338N\u0338E\u0338R"}
+    local frames = {"OWNER??", "0WN3R", "O W N E R", "#ERROR", "OWNER //", "0W#N#E#R"}
     task.spawn(function()
         local count = 0
         while glitchTitle and titleGeneration == generation
@@ -1167,7 +1174,7 @@ local function destroy()
         environment.FIO_HUB = nil
     end
 end
-environment.FIO_HUB = {Destroy = destroy, Version = "0.5.0"}
+environment.FIO_HUB = {Destroy = destroy, Version = "0.5.1"}
 unloadButton.MouseButton1Click:Connect(destroy)
 showTab("Home")
-print("[FIO] Hub v0.5.0 loaded")
+print("[FIO] Hub v0.5.1 loaded")
