@@ -1,5 +1,5 @@
 -- First Is Owner | FIO Hub starter
--- Client-side utilities only. No owner/admin spoofing or remote calls.
+-- Client utilities and optional F3X BTools actions. Server permissions still apply.
 local PLACE_ID = 130496219537579
 if game.PlaceId ~= PLACE_ID then
     warn("[FIO] Wrong experience; expected First Is Owner.")
@@ -132,8 +132,8 @@ local pages = {}
 local tabButtons = {}
 local function makePage(name, tabIndex)
     local tab = makeButton(name, tabsBar,
-        UDim2.new((tabIndex - 1) / 4, 0, 0, 0),
-        UDim2.new(1 / 4, -4, 1, 0))
+        UDim2.new((tabIndex - 1) / 5, 0, 0, 0),
+        UDim2.new(1 / 5, -4, 1, 0))
     tabButtons[name] = tab
     local page = create("Frame", {
         Name = name,
@@ -148,6 +148,7 @@ local home = makePage("Home", 1)
 local playersPage = makePage("Players", 2)
 local visuals = makePage("Visuals", 3)
 local exploits = makePage("Exploits", 4)
+-- The BTools page is initialized after the shared UI and player helpers.
 
 local function showTab(name)
     for tabName, page in pairs(pages) do
@@ -615,6 +616,316 @@ local function stopExploits()
     exploitEnabled.AntiFling = false
 end
 
+
+-- BTools integrations (F3X-compatible endpoints only).
+-- These actions never bypass the game's server-side edit permissions.
+local btools = makePage("BTools", 5)
+local antiJail = false
+local killTouch = false
+local glitchTitle = false
+local touchConnections = {}
+local touchCharacterConnection = nil
+local touchCooldowns = {}
+local titleBillboard = nil
+local titleGeneration = 0
+local jailBusy = false
+
+label("BTOOLS / F3X", btools, UDim2.fromOffset(13, 10),
+    UDim2.new(1, -26, 0, 23), 16, true)
+label("Requires equipped server-authorized BTools. Some game objects may be protected.",
+    btools, UDim2.fromOffset(13, 33),
+    UDim2.new(1, -26, 0, 42), 12)
+local btoolStatus = label("BTools: not checked", btools,
+    UDim2.fromOffset(13, 76), UDim2.new(1, -26, 0, 21), 12)
+
+local function findBtools()
+    local character = localPlayer.Character
+    local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+    for _, location in ipairs({character, backpack}) do
+        if location then
+            for _, item in ipairs(location:GetChildren()) do
+                if item:IsA("Tool") then
+                    local api = item:FindFirstChild("SyncAPI", true)
+                    local endpoint = api and api:FindFirstChild("ServerEndpoint", true)
+                    if endpoint and endpoint:IsA("RemoteFunction") then
+                        return item, endpoint
+                    end
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
+local function getEquippedBtools()
+    local tool, endpoint = findBtools()
+    if not endpoint then
+        btoolStatus.Text = "BTools: F3X SyncAPI not found"
+        setStatus("Equip server-authorized F3X BTools first")
+        return nil
+    end
+    local character = localPlayer.Character
+    if not character or tool.Parent ~= character then
+        local humanoid = ownHumanoid()
+        if not humanoid then
+            setStatus("Cannot equip BTools without a character")
+            return nil
+        end
+        humanoid:EquipTool(tool)
+    end
+    if tool.Parent ~= localPlayer.Character then
+        setStatus("BTools must be equipped")
+        return nil
+    end
+    btoolStatus.Text = "BTools: equipped (authorization unverified)"
+    return endpoint
+end
+
+local function callBtools(action, payload)
+    local endpoint = getEquippedBtools()
+    if not endpoint then return false end
+    local ok, err = pcall(function()
+        endpoint:InvokeServer(action, payload)
+    end)
+    if not ok then
+        setStatus("BTools request failed: " .. tostring(err):sub(1, 80))
+    end
+    -- A successful remote invocation is not proof that the server accepted it.
+    return ok
+end
+
+local function belongsToPlayer(part)
+    local ancestor = part
+    while ancestor and ancestor ~= workspace do
+        if ancestor:IsA("Model") and Players:GetPlayerFromCharacter(ancestor) then
+            return true
+        end
+        ancestor = ancestor.Parent
+    end
+    return false
+end
+
+local function isJailPart(part)
+    local ancestor = part
+    local depth = 0
+    while ancestor and ancestor ~= workspace and depth < 5 do
+        local name = ancestor.Name:lower()
+        if name:find("jail", 1, true)
+            or name:find("prison", 1, true)
+            or name:find("cage", 1, true)
+            or name:find("cell", 1, true) then
+            return true
+        end
+        ancestor = ancestor.Parent
+        depth += 1
+    end
+    return false
+end
+
+local function removeNearbyJail()
+    if jailBusy or not antiJail then return end
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local endpoint = getEquippedBtools()
+    if not endpoint then return end
+    jailBusy = true
+    local ok, err = pcall(function()
+        local overlap = OverlapParams.new()
+        overlap.FilterType = Enum.RaycastFilterType.Exclude
+        overlap.FilterDescendantsInstances = {character}
+        overlap.MaxParts = 150
+        local nearby = workspace:GetPartBoundsInRadius(root.Position, 22, overlap)
+        local targets = {}
+        for _, part in ipairs(nearby) do
+            if #targets >= 30 then break end
+            if part:IsA("BasePart") and not belongsToPlayer(part) and isJailPart(part) then
+                table.insert(targets, part)
+            end
+        end
+        if #targets > 0 then
+            -- Deliberately limited to named jail parts near your own character.
+            endpoint:InvokeServer("Remove", targets)
+            task.wait(0.25)
+            local remaining = 0
+            for _, part in ipairs(targets) do
+                if part:IsDescendantOf(workspace) then remaining += 1 end
+            end
+            setStatus("Anti Jail: " .. (#targets - remaining) ..
+                "/" .. #targets .. " nearby jail parts removed")
+        end
+    end)
+    jailBusy = false
+    if not ok then setStatus("Anti Jail error: " .. tostring(err):sub(1, 80)) end
+end
+
+local function disconnectTouches()
+    for _, connection in ipairs(touchConnections) do
+        connection:Disconnect()
+    end
+    table.clear(touchConnections)
+    if touchCharacterConnection then
+        touchCharacterConnection:Disconnect()
+        touchCharacterConnection = nil
+    end
+end
+
+local function onKillTouch(other)
+    if not killTouch or not other:IsA("BasePart") then return end
+    local model = other
+    local target = nil
+    while model and model ~= workspace do
+        if model:IsA("Model") then
+            target = Players:GetPlayerFromCharacter(model)
+            if target then break end
+        end
+        model = model.Parent
+    end
+    if not target or target == localPlayer then return end
+    local now = os.clock()
+    if touchCooldowns[target] and now - touchCooldowns[target] < 4 then return end
+    touchCooldowns[target] = now
+    local head = model:FindFirstChild("Head")
+    if not head or not head:IsA("BasePart") then return end
+    task.spawn(function()
+        if not killTouch then return end
+        if callBtools("Remove", {head}) then
+            task.wait(0.25)
+            if not killTouch then return end
+            if head:IsDescendantOf(workspace) then
+                setStatus("Kill Touch: server did not remove @" .. target.Name .. "'s head")
+            else
+                setStatus("Kill Touch: removed head of @" .. target.Name)
+            end
+        end
+    end)
+end
+
+local function bindTouchCharacter(character)
+    disconnectTouches()
+    if not killTouch then return end
+    local function bindPart(descendant)
+        if not descendant:IsA("BasePart")
+            or descendant:FindFirstAncestorOfClass("Accessory") then return end
+        table.insert(touchConnections, descendant.Touched:Connect(onKillTouch))
+    end
+    for _, descendant in ipairs(character:GetDescendants()) do bindPart(descendant) end
+    touchCharacterConnection = character.DescendantAdded:Connect(bindPart)
+end
+
+local function stopGlitchTitle()
+    glitchTitle = false
+    titleGeneration += 1
+    if titleBillboard then titleBillboard:Destroy() titleBillboard = nil end
+end
+
+local function startGlitchTitle()
+    local head = localPlayer.Character and localPlayer.Character:FindFirstChild("Head")
+    if not head then
+        setStatus("Glitchy Title: character head unavailable")
+        return false
+    end
+    stopGlitchTitle()
+    glitchTitle = true
+    titleGeneration += 1
+    local generation = titleGeneration
+    titleBillboard = create("BillboardGui", {
+        Name = "FIO_GlitchTitle",
+        Size = UDim2.fromOffset(250, 45),
+        StudsOffsetWorldSpace = Vector3.new(0, 3.2, 0),
+        AlwaysOnTop = true,
+        Adornee = head
+    }, head)
+    local textObject = create("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
+        Text = "",
+        TextScaled = true,
+        TextStrokeTransparency = 0.25,
+        Font = Enum.Font.GothamBold,
+        TextColor3 = WHITE
+    }, titleBillboard)
+    local frames = {"OWNER??", "0WN3R", "O W N E R", "#ERROR", "OWNER //", "0\u0338W\u0338N\u0338E\u0338R"}
+    task.spawn(function()
+        local count = 0
+        while glitchTitle and titleGeneration == generation
+            and textObject.Parent and head.Parent do
+            count += 1
+            textObject.Text = frames[(count % #frames) + 1]
+            textObject.Rotation = (count % 3 - 1) * 3
+            textObject.TextColor3 = count % 2 == 0 and WHITE
+                or Color3.fromRGB(140, 225, 255)
+            task.wait(0.16)
+        end
+    end)
+    setStatus("Glitchy Title enabled (local visual only)")
+    return true
+end
+
+local antiJailButton = makeButton("Anti Jail: OFF", btools,
+    UDim2.fromOffset(13, 108), UDim2.new(1, -26, 0, 37))
+local killTouchButton = makeButton("Kill Touch: OFF", btools,
+    UDim2.fromOffset(13, 153), UDim2.new(1, -26, 0, 37))
+local glitchTitleButton = makeButton("Glitchy Title: OFF", btools,
+    UDim2.fromOffset(13, 198), UDim2.new(1, -26, 0, 37))
+antiJailButton.MouseButton1Click:Connect(function()
+    if not antiJail and not getEquippedBtools() then return end
+    antiJail = not antiJail
+    antiJailButton.Text = "Anti Jail: " .. (antiJail and "ON" or "OFF")
+    setStatus(antiJail and "Anti Jail: watching for nearby jail objects" or "Anti Jail disabled")
+    if antiJail then task.spawn(removeNearbyJail) end
+end)
+killTouchButton.MouseButton1Click:Connect(function()
+    if not killTouch and not getEquippedBtools() then return end
+    killTouch = not killTouch
+    killTouchButton.Text = "Kill Touch: " .. (killTouch and "ON" or "OFF")
+    if killTouch then
+        if localPlayer.Character then bindTouchCharacter(localPlayer.Character) end
+        setStatus("Kill Touch: removing touched players' heads if authorized")
+    else
+        disconnectTouches()
+        setStatus("Kill Touch disabled")
+    end
+end)
+glitchTitleButton.MouseButton1Click:Connect(function()
+    if not glitchTitle then
+        if not getEquippedBtools() then return end
+        if startGlitchTitle() then glitchTitleButton.Text = "Glitchy Title: ON" end
+    else
+        stopGlitchTitle()
+        glitchTitleButton.Text = "Glitchy Title: OFF"
+        setStatus("Glitchy Title disabled")
+    end
+end)
+
+label("Anti Jail / Kill Touch: server permission required.\nTitle: cosmetic and visible only to you.",
+    btools, UDim2.fromOffset(13, 242), UDim2.new(1, -26, 0, 26), 11)
+
+local jailElapsed = 0
+track(RunService.Heartbeat, function(dt)
+    if not antiJail then return end
+    jailElapsed += dt
+    if jailElapsed >= 1.7 then
+        jailElapsed = 0
+        task.spawn(removeNearbyJail)
+    end
+end)
+track(localPlayer.CharacterAdded, function(character)
+    if killTouch then bindTouchCharacter(character) end
+    if glitchTitle then
+        stopGlitchTitle()
+        glitchTitleButton.Text = "Glitchy Title: OFF"
+        setStatus("Glitchy Title stopped on respawn; re-enable when ready")
+    end
+end)
+
+local function stopBtools()
+    antiJail = false
+    killTouch = false
+    disconnectTouches()
+    stopGlitchTitle()
+end
+
 -- Window controls / unload
 local function setWindowVisible(visible)
     window.Visible = visible
@@ -665,6 +976,7 @@ local function destroy()
     if destroyed then return end
     destroyed = true
     stopExploits()
+    stopBtools()
     if brightEnabled then setFullbright(false) end
     if spectating then stopSpectate() end
     for _, connection in ipairs(connections) do
@@ -675,7 +987,7 @@ local function destroy()
         environment.FIO_HUB = nil
     end
 end
-environment.FIO_HUB = {Destroy = destroy, Version = "0.2.0"}
+environment.FIO_HUB = {Destroy = destroy, Version = "0.3.0"}
 unloadButton.MouseButton1Click:Connect(destroy)
 showTab("Home")
-print("[FIO] Hub v0.2.0 loaded")
+print("[FIO] Hub v0.3.0 loaded")
