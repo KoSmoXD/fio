@@ -39,7 +39,7 @@ Run the separate scanner in First Is Owner:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/fio/feat/fio-hub-starter/dex_scanner.lua"))()
 ```
 
-The scanner displays the **client-replicated** RemoteEvents, RemoteFunctions, Tools, ProximityPrompts, and ClickDetectors. It highlights names mentioning jail, F3X/BTools, owner, rank, admin, coin, commands, kill, title, and other relevant mechanics. It reports object paths without invoking any remotes, executing remote commands, or attempting privilege escalation.
+The scanner displays the **client-replicated** RemoteEvents, RemoteFunctions, Tools, ProximityPrompts, and ClickDetectors. The **Ranks** tab also collects player rank/owner/admin-related attributes and Value objects, other replicated rank values, and relevant remote names. Values shown here may be display-only; this is not a rank-granting feature. It highlights names mentioning jail, F3X/BTools, owner, rank, admin, coin, commands, kill, title, and other relevant mechanics. It reports object paths without invoking any remotes, executing remote commands, or attempting privilege escalation.
 
 Use the **Copy report** button to collect the inventory for review. If a clipboard function is unavailable, select and copy the report text manually. The UI is draggable, works on touch screens, and toggles with Right Control or its floating DEX button. The generated paths may include player names; review before sharing publicly.
 
