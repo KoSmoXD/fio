@@ -494,7 +494,8 @@ local exploitEnabled = {
     PlayerESP = false,
     ClickTP = false,
     AntiFling = false,
-    WorkspaceHelper = false
+    WorkspaceHelper = false,
+    PremiumFeature = false
 }
 local exploitButtons = {}
 local flyBody = nil
@@ -663,6 +664,79 @@ local function setWorkspaceHelper(shouldEnable)
     return false
 end
 
+-- Premium Feature: local-only diagnostic preview.
+-- The existing premiumfeature.lua is preserved but not executed by this toggle.
+local premiumModule = nil
+local premiumHadOthers = false
+local premiumSessionIds = {}
+local PREMIUM_PREVIEW_URL =
+    "https://raw.githubusercontent.com/KoSmoXD/fio/feat/fio-hub-starter/premium_preview.lua"
+
+local function setPremiumFeature(shouldEnable)
+    local context = {setStatus = setStatus}
+    if shouldEnable then
+        if premiumModule then return true end
+        local ok, moduleOrError = pcall(function()
+            local source = game:HttpGet(PREMIUM_PREVIEW_URL)
+            local compiled, compileError = loadstring(source)
+            if not compiled then error("Premium compile error: " .. tostring(compileError)) end
+            local module = compiled()
+            if type(module) ~= "table"
+                or type(module.Enable) ~= "function"
+                or type(module.Disable) ~= "function" then
+                error("Premium module must return Enable(context) and Disable(context)")
+            end
+            return module
+        end)
+        if not ok then
+            setStatus("Premium load failed: " .. tostring(moduleOrError):sub(1, 94))
+            return false
+        end
+        local enabled, startError = pcall(moduleOrError.Enable, context)
+        if not enabled then
+            pcall(moduleOrError.Disable, context)
+            setStatus("Premium start failed: " .. tostring(startError):sub(1, 94))
+            return false
+        end
+        premiumModule = moduleOrError
+        table.clear(premiumSessionIds)
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer then
+                premiumSessionIds[player.UserId] = true
+            end
+        end
+        premiumHadOthers = next(premiumSessionIds) ~= nil
+        return true
+    end
+
+    if premiumModule then
+        local module = premiumModule
+        premiumModule = nil
+        local ok, err = pcall(module.Disable, context)
+        if not ok then
+            setStatus("Premium cleanup failed: " .. tostring(err):sub(1, 94))
+        end
+    end
+    table.clear(premiumSessionIds)
+    premiumHadOthers = false
+    return false
+end
+
+track(Players.PlayerRemoving, function(leaving)
+    if not exploitEnabled.PremiumFeature or not premiumHadOthers then return end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= leaving and premiumSessionIds[player.UserId] then
+            return
+        end
+    end
+    setPremiumFeature(false)
+    exploitEnabled.PremiumFeature = false
+    if exploitButtons.PremiumFeature then
+        exploitButtons.PremiumFeature.Text = "Premium Feature: OFF"
+    end
+    setStatus("Premium preview stopped: original players left")
+end)
+
 local featureNames = {
     {"Fly", "Fly"},
     {"Noclip", "Noclip"},
@@ -670,7 +744,8 @@ local featureNames = {
     {"PlayerESP", "Player ESP"},
     {"ClickTP", "Click teleport"},
     {"AntiFling", "Anti-fling"},
-    {"WorkspaceHelper", "Workspace Helper"}
+    {"WorkspaceHelper", "Workspace Helper"},
+    {"PremiumFeature", "Premium Feature"}
 }
 for index, feature in ipairs(featureNames) do
     local key, display = feature[1], feature[2]
@@ -680,7 +755,7 @@ for index, feature in ipairs(featureNames) do
         UDim2.new(colNumber * 0.5, 13 + colNumber * 3, 0, 73 + rowNumber * 42),
         UDim2.new(0.5, -22, 0, 36))
     exploitButtons[key] = button
-    if key == "WorkspaceHelper" then
+    if key == "WorkspaceHelper" or key == "PremiumFeature" then
         button.TextSize = 11
         button.TextWrapped = true
     end
@@ -694,6 +769,8 @@ for index, feature in ipairs(featureNames) do
             end
         elseif key == "WorkspaceHelper" then
             newValue = setWorkspaceHelper(newValue)
+        elseif key == "PremiumFeature" then
+            newValue = setPremiumFeature(newValue)
         elseif key == "Noclip" and not newValue then
             stopNoclip()
         elseif key == "PlayerESP" then
@@ -796,6 +873,8 @@ end)
 local function stopExploits()
     setWorkspaceHelper(false)
     exploitEnabled.WorkspaceHelper = false
+    setPremiumFeature(false)
+    exploitEnabled.PremiumFeature = false
     stopFly()
     stopNoclip()
     clearEsp()
@@ -1175,7 +1254,7 @@ local function destroy()
         environment.FIO_HUB = nil
     end
 end
-environment.FIO_HUB = {Destroy = destroy, Version = "0.5.1"}
+environment.FIO_HUB = {Destroy = destroy, Version = "0.5.2"}
 unloadButton.MouseButton1Click:Connect(destroy)
 showTab("Home")
-print("[FIO] Hub v0.5.1 loaded")
+print("[FIO] Hub v0.5.2 loaded")
