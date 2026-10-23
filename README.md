@@ -43,6 +43,20 @@ The **Visuals** tab includes an opt-in **Client Anti-Lag** toggle. This does not
 
 **Limitations:** Since the live game has not been inspected, these generic part names are a conservative heuristic, not a confirmed First Is Owner debris signature. Some clutter might not be caught; rapidly spawned legitimate building pieces with the same names might be removed from your local view. Locally destroyed objects are **not automatically restored** when the toggle is turned off, although streaming or rejoining may reload them. No server load/spam feature is included.
 
+## Editable Workspace Helper toggle (v0.5.0)
+
+The **Exploits** tab contains a new **Workspace Helper** ON/OFF toggle. The hub does not include the previously proposed high-volume part spawning loop.
+
+Edit [`workspace_helper_custom.lua`](https://github.com/KoSmoXD/fio/blob/feat/fio-hub-starter/workspace_helper_custom.lua) in GitHub to customize the toggle:
+
+- Put your own feature's startup logic inside `WorkspaceHelper.Enable(context)`.
+- Put corresponding teardown logic inside `WorkspaceHelper.Disable(context)` so turning OFF or unloading the hub cleans up.
+- Use `context.setStatus("text")` to show messages inside the FIO Hub status bar.
+- Save the file to the **`feat/fio-hub-starter`** branch. The toggle fetches the latest version of this file each time it turns ON; no changes to `fio.lua` are necessary for ordinary customization.
+- If the custom file fails to load or raises an error, the toggle remains OFF.
+
+By default, the custom module only updates the status text and prints to the local console. It does not create parts, call server remotes, or modify other players.
+
 ## Dex Audit (read-only diagnostic)
 
 Run the separate scanner in First Is Owner:
