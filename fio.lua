@@ -485,7 +485,8 @@ local exploitEnabled = {
     InfiniteJump = false,
     PlayerESP = false,
     ClickTP = false,
-    AntiFling = false
+    AntiFling = false,
+    WorkspaceHelper = false
 }
 local exploitButtons = {}
 local flyBody = nil
@@ -605,22 +606,76 @@ local function refreshEsp()
     end
 end
 
+-- Workspace Helper is an editable toggle backed by workspace_helper_custom.lua.
+-- No workspace spawning or network remotes are implemented by the hub itself.
+local workspaceHelperModule = nil
+local workspaceHelperSource =
+    "https://raw.githubusercontent.com/KoSmoXD/fio/feat/fio-hub-starter/workspace_helper_custom.lua"
+
+local function setWorkspaceHelper(shouldEnable)
+    local context = {setStatus = setStatus}
+    if shouldEnable then
+        if workspaceHelperModule then return true end
+        local ok, result = pcall(function()
+            local source = game:HttpGet(workspaceHelperSource)
+            local compiled, compileError = loadstring(source)
+            if not compiled then
+                error("custom feature compile failed: " .. tostring(compileError))
+            end
+            local module = compiled()
+            if type(module) ~= "table"
+                or type(module.Enable) ~= "function"
+                or type(module.Disable) ~= "function" then
+                error("expected module with Enable(context) and Disable(context)")
+            end
+            return module
+        end)
+        if not ok then
+            setStatus("Workspace Helper load failed: " .. tostring(result):sub(1, 105))
+            return false
+        end
+        local enabled, enableError = pcall(result.Enable, context)
+        if not enabled then
+            pcall(result.Disable, context)
+            setStatus("Workspace Helper error: " .. tostring(enableError):sub(1, 105))
+            return false
+        end
+        workspaceHelperModule = result
+        return true
+    end
+
+    if workspaceHelperModule then
+        local module = workspaceHelperModule
+        workspaceHelperModule = nil
+        local ok, err = pcall(module.Disable, context)
+        if not ok then
+            setStatus("Workspace Helper cleanup error: " .. tostring(err):sub(1, 105))
+        end
+    end
+    return false
+end
+
 local featureNames = {
     {"Fly", "Fly"},
     {"Noclip", "Noclip"},
     {"InfiniteJump", "Infinite jump"},
     {"PlayerESP", "Player ESP"},
     {"ClickTP", "Click teleport"},
-    {"AntiFling", "Anti-fling"}
+    {"AntiFling", "Anti-fling"},
+    {"WorkspaceHelper", "Workspace Helper"}
 }
 for index, feature in ipairs(featureNames) do
     local key, display = feature[1], feature[2]
     local rowNumber = math.floor((index - 1) / 2)
     local colNumber = (index - 1) % 2
     local button = makeButton(display .. ": OFF", exploits,
-        UDim2.new(colNumber * 0.5, 13 + colNumber * 3, 0, 78 + rowNumber * 47),
+        UDim2.new(colNumber * 0.5, 13 + colNumber * 3, 0, 73 + rowNumber * 42),
         UDim2.new(0.5, -22, 0, 36))
     exploitButtons[key] = button
+    if key == "WorkspaceHelper" then
+        button.TextSize = 11
+        button.TextWrapped = true
+    end
     button.MouseButton1Click:Connect(function()
         local newValue = not exploitEnabled[key]
         if key == "Fly" then
@@ -629,6 +684,8 @@ for index, feature in ipairs(featureNames) do
             else
                 stopFly()
             end
+        elseif key == "WorkspaceHelper" then
+            newValue = setWorkspaceHelper(newValue)
         elseif key == "Noclip" and not newValue then
             stopNoclip()
         elseif key == "PlayerESP" then
@@ -644,8 +701,8 @@ for index, feature in ipairs(featureNames) do
         if newValue or key ~= "Fly" then setStatus(button.Text) end
     end)
 end
-label("Fly: WASD / joystick + E or Space to rise, Q to descend. Mobile: UP / DOWN.",
-    exploits, UDim2.fromOffset(13, 219), UDim2.new(1, -26, 0, 40), 12)
+label("Fly: WASD/joystick, E/Space up, Q down. Mobile: UP/DOWN.",
+    exploits, UDim2.fromOffset(13, 238), UDim2.new(1, -26, 0, 26), 11)
 
 track(RunService.Heartbeat, function()
     if exploitEnabled.Fly then
@@ -729,6 +786,8 @@ track(localPlayer.CharacterRemoving, function()
 end)
 
 local function stopExploits()
+    setWorkspaceHelper(false)
+    exploitEnabled.WorkspaceHelper = false
     stopFly()
     stopNoclip()
     clearEsp()
@@ -1108,7 +1167,7 @@ local function destroy()
         environment.FIO_HUB = nil
     end
 end
-environment.FIO_HUB = {Destroy = destroy, Version = "0.4.0"}
+environment.FIO_HUB = {Destroy = destroy, Version = "0.5.0"}
 unloadButton.MouseButton1Click:Connect(destroy)
 showTab("Home")
-print("[FIO] Hub v0.4.0 loaded")
+print("[FIO] Hub v0.5.0 loaded")
