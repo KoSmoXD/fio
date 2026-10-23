@@ -23,6 +23,24 @@ BTools features require an **equipped F3X-compatible Tool** with `SyncAPI.Server
 
 All three toggles clean up when disabled or when the hub unloads. Touch listeners rebind after respawn; the title effect must be re-enabled after respawn.
 
+## If the hub does not appear (v0.5.1)
+
+Use the **diagnostic loader** instead of the old direct link:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/fio/feat/fio-hub-starter/fio_loader.lua"))()
+```
+
+It immediately opens a small status window and reports download failures, Luau syntax errors, or runtime errors, with a Retry button. The loader downloads `fio.lua` from the same development branch.
+
+Fixes in v0.5.1:
+
+- Replaced the invalid `\\u0338` Lua string escapes in Glitchy Title, which could prevent compilation and leave the screen blank.
+- Recognizes First Is Owner linked places by universe ID `7706951053`, rather than silently exiting when the place ID differs from `130496219537579`.
+- Restored the missing `workspace_helper_custom.lua` module used by the editable Workspace Helper toggle.
+
+**Important:** `main` currently contains only `README.md`. Use the `feat/fio-hub-starter` URL until PR #1 is merged.
+
 ## Development loader
 
 ```lua
