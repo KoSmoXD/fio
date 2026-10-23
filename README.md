@@ -31,6 +31,20 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/fio/feat/fio-
 
 After the PR merges, change `feat/fio-hub-starter` to `main`.
 
+## Dex Audit (read-only diagnostic)
+
+Run the separate scanner in First Is Owner:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/fio/feat/fio-hub-starter/dex_scanner.lua"))()
+```
+
+The scanner displays the **client-replicated** RemoteEvents, RemoteFunctions, Tools, ProximityPrompts, and ClickDetectors. It highlights names mentioning jail, F3X/BTools, owner, rank, admin, coin, commands, kill, title, and other relevant mechanics. It reports object paths without invoking any remotes, executing remote commands, or attempting privilege escalation.
+
+Use the **Copy report** button to collect the inventory for review. If a clipboard function is unavailable, select and copy the report text manually. The UI is draggable, works on touch screens, and toggles with Right Control or its floating DEX button. The generated paths may include player names; review before sharing publicly.
+
+This inventory is exploratory, not a vulnerability report. Client-visible names don't prove what server-side permission checks do.
+
 ## Limitations and verification
 
 The game's owner positions, ranks, permissions and coins are server controlled. Game rules explicitly warn that exploitation can lead to permanent bans.
