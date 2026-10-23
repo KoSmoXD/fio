@@ -356,6 +356,127 @@ for index, speed in ipairs(speeds) do
     end)
 end
 
+-- Client Anti-Lag: locally remove bursts of newly replicated generic BTools debris.
+-- Does not send network requests, create parts, modify the server, or alter other clients.
+-- Existing map parts and player characters are never scanned for removal.
+local clientAntiLagEnabled = false
+local clientAntiLagConnection = nil
+local recentClutter = {}
+local clutterWindowStarted = 0
+local clutterBurstUntil = 0
+local locallyRemoved = 0
+local CLUTTER_WINDOW_SECONDS = 2
+local CLUTTER_THRESHOLD = 24
+local CLUTTER_BURST_SECONDS = 8
+local CLUTTER_NAMES = {
+    Part = true, Wedge = true, Cylinder = true,
+    CornerWedge = true, Block = true
+}
+
+local function otherPlayerCount(excluding)
+    local count = 0
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player ~= excluding then
+            count += 1
+        end
+    end
+    return count
+end
+
+local antiLagButton = makeButton("Client Anti-Lag: OFF", visuals,
+    UDim2.fromOffset(13, 216), UDim2.new(1, -26, 0, 34))
+antiLagButton.TextSize = 13
+
+local function isGenericDebris(part)
+    if not part:IsA("BasePart") or not CLUTTER_NAMES[part.Name] then
+        return false
+    end
+    local parent = part.Parent
+    if not parent then return false end
+    if parent == workspace then return true end
+    -- Some building tools place a generic Model directly in Workspace.
+    if parent:IsA("Model") and parent.Parent == workspace
+        and (parent.Name == "Model" or parent.Name == "BTools"
+            or parent.Name == "F3X") then
+        return true
+    end
+    return false
+end
+
+local function stopClientAntiLag(message)
+    clientAntiLagEnabled = false
+    antiLagButton.Text = "Client Anti-Lag: OFF"
+    if clientAntiLagConnection then
+        clientAntiLagConnection:Disconnect()
+        clientAntiLagConnection = nil
+    end
+    table.clear(recentClutter)
+    clutterWindowStarted = 0
+    clutterBurstUntil = 0
+    if message then setStatus(message) end
+end
+
+local function removeLocalDebris(part)
+    if not clientAntiLagEnabled or not part.Parent then return end
+    if not isGenericDebris(part) then return end
+    -- This is client-only removal of a replicated instance. Other players'
+    -- copies and the authoritative server Workspace are not modified.
+    local ok = pcall(function() part:Destroy() end)
+    if ok then locallyRemoved += 1 end
+end
+
+local function observeLocalDebris(descendant)
+    if not clientAntiLagEnabled or not isGenericDebris(descendant) then return end
+    local now = os.clock()
+    if now <= clutterBurstUntil then
+        clutterBurstUntil = now + CLUTTER_BURST_SECONDS
+        removeLocalDebris(descendant)
+        return
+    end
+    if now - clutterWindowStarted > CLUTTER_WINDOW_SECONDS then
+        clutterWindowStarted = now
+        table.clear(recentClutter)
+    end
+    if #recentClutter < CLUTTER_THRESHOLD then
+        table.insert(recentClutter, descendant)
+    end
+    if #recentClutter >= CLUTTER_THRESHOLD then
+        clutterBurstUntil = now + CLUTTER_BURST_SECONDS
+        for _, part in ipairs(recentClutter) do
+            removeLocalDebris(part)
+        end
+        table.clear(recentClutter)
+        setStatus("Client Anti-Lag: filtering new clutter locally")
+    end
+end
+
+antiLagButton.MouseButton1Click:Connect(function()
+    if clientAntiLagEnabled then
+        stopClientAntiLag("Client Anti-Lag disabled; " .. locallyRemoved
+            .. " parts removed locally this session")
+        return
+    end
+    if otherPlayerCount() == 0 then
+        setStatus("Client Anti-Lag: alone in server, nothing to filter")
+        return
+    end
+    locallyRemoved = 0
+    clutterWindowStarted = os.clock()
+    clutterBurstUntil = 0
+    table.clear(recentClutter)
+    clientAntiLagEnabled = true
+    antiLagButton.Text = "Client Anti-Lag: ON"
+    clientAntiLagConnection = workspace.DescendantAdded:Connect(observeLocalDebris)
+    setStatus("Client Anti-Lag: watching new generic building parts")
+end)
+
+-- Automatically stop when everyone except this client has left the server.
+track(Players.PlayerRemoving, function(leaving)
+    if clientAntiLagEnabled and otherPlayerCount(leaving) == 0 then
+        stopClientAntiLag("Client Anti-Lag stopped: everyone else left")
+    end
+end)
+
 -- Exploits
 local RunService = game:GetService("RunService")
 local exploitEnabled = {
@@ -976,6 +1097,7 @@ local function destroy()
     destroyed = true
     stopExploits()
     stopBtools()
+    stopClientAntiLag()
     if brightEnabled then setFullbright(false) end
     if spectating then stopSpectate() end
     for _, connection in ipairs(connections) do
@@ -986,7 +1108,7 @@ local function destroy()
         environment.FIO_HUB = nil
     end
 end
-environment.FIO_HUB = {Destroy = destroy, Version = "0.3.0"}
+environment.FIO_HUB = {Destroy = destroy, Version = "0.4.0"}
 unloadButton.MouseButton1Click:Connect(destroy)
 showTab("Home")
-print("[FIO] Hub v0.3.0 loaded")
+print("[FIO] Hub v0.4.0 loaded")
