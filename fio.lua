@@ -13,7 +13,8 @@ local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
 if not localPlayer then
-    localPlayer = Players:GetPropertyChangedSignal("LocalPlayer"):Wait() and Players.LocalPlayer
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    localPlayer = Players.LocalPlayer
 end
 if not localPlayer then
     error("[FIO] LocalPlayer unavailable; run in a client session")
