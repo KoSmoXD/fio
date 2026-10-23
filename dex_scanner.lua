@@ -1,4 +1,4 @@
--- FIO Dex Audit v0.1.0
+-- FIO Dex Audit v0.2.0
 -- Read-only inspection of objects replicated to this Roblox client.
 -- Does NOT fire remotes, decompile scripts, modify parts, or bypass permissions.
 local EXPECTED_PLACE_ID = 130496219537579
@@ -93,10 +93,10 @@ local tabBar = new("Frame", {
     Size = UDim2.new(1, -18, 0, 31)
 }, shell)
 local tabs = {}
-local tabNames = {"Summary", "Remotes", "Tools", "Signals"}
+local tabNames = {"Summary", "Ranks", "Remotes", "Tools", "Signals"}
 for i, name in ipairs(tabNames) do
-    tabs[name] = button(name, UDim2.new((i-1)/4, 2, 0, 0),
-        UDim2.new(0.25, -4, 1, 0), tabBar)
+    tabs[name] = button(name, UDim2.new((i-1)/5, 2, 0, 0),
+        UDim2.new(0.2, -4, 1, 0), tabBar)
 end
 
 local status = new("TextLabel", {
@@ -143,7 +143,7 @@ local opener = button("DEX", UDim2.fromOffset(12, 120),
     UDim2.fromOffset(58, 35), canvas)
 opener.Visible = false
 
-local categories = {Summary = {}, Remotes = {}, Tools = {}, Signals = {}}
+local categories = {Summary = {}, Ranks = {}, Remotes = {}, Tools = {}, Signals = {}}
 local activeTab = "Summary"
 local scanning = false
 local reportSnapshot = ""
@@ -159,6 +159,19 @@ local function matches(name)
         if name:find(keyword, 1, true) then return keyword end
     end
     return nil
+end
+local rankHints = {"rank", "owner", "admin", "role", "permission",
+    "authority", "overlord", "position", "moderator", "hierarchy", "staff"}
+local function isRankRelated(name)
+    name = string.lower(name)
+    for _, hint in ipairs(rankHints) do
+        if string.find(name, hint, 1, true) then return true end
+    end
+    return false
+end
+local function safeValue(value)
+    local stringValue = tostring(value)
+    return stringValue:sub(1, 100)
 end
 local function pathOf(instance)
     local success, path = pcall(function()
@@ -199,6 +212,18 @@ local function scan()
     rescanButton.Text = "Scanning..."
     status.Text = "Reading client-visible objects..."
     local remoteRecords, toolRecords, signalRecords, matchesFound = {}, {}, {}, {}
+    local rankRecords = {
+        "RANK / OWNER / ADMIN AUDIT",
+        "This reports replicated signals, NOT actual permission grants.",
+        ""
+    }
+    local rankCandidateCount = 0
+    local function addRankRecord(line)
+        if #rankRecords < 230 then
+            table.insert(rankRecords, line)
+        end
+        rankCandidateCount += 1
+    end
     local remoteCount, toolCount, signalCount, inspected = 0, 0, 0, 0
     local maxEntries = 220
 
@@ -210,6 +235,16 @@ local function scan()
             or class == "UnreliableRemoteEvent"
         local isTool = object:IsA("Tool")
         local isSignal = class == "ProximityPrompt" or class == "ClickDetector"
+        if isRemote and isRankRelated(object.Name) then
+            addRankRecord("REMOTE CANDIDATE " .. formatRecord(object))
+        end
+        if object:IsA("ValueBase") and isRankRelated(object.Name)
+            and not object:IsDescendantOf(Players)
+            and not object:IsDescendantOf(canvas) then
+            local ok, value = pcall(function() return object.Value end)
+            addRankRecord("REPLICATED VALUE " .. formatRecord(object)
+                .. (ok and (" = " .. safeValue(value)) or " = [unreadable]"))
+        end
         if isRemote then
             remoteCount += 1
             if #remoteRecords < maxEntries then
@@ -239,16 +274,49 @@ local function scan()
         if inspected % 450 == 0 then task.wait() end
     end
 
+    table.insert(rankRecords, "")
+    table.insert(rankRecords, "PLAYER ATTRIBUTES AND VALUES")
+    for _, player in ipairs(Players:GetPlayers()) do
+        table.insert(rankRecords, "@" .. player.Name .. (player == LocalPlayer and " (you)" or ""))
+        local count = 0
+        local attributeMap = player:GetAttributes()
+        local keys = {}
+        for key in pairs(attributeMap) do
+            if isRankRelated(key) then table.insert(keys, key) end
+        end
+        table.sort(keys)
+        for _, key in ipairs(keys) do
+            addRankRecord("  ATTRIBUTE " .. key .. " = " .. safeValue(attributeMap[key]))
+            count += 1
+        end
+        for _, object in ipairs(player:GetDescendants()) do
+            if object:IsA("ValueBase") and isRankRelated(object.Name) then
+                local ok, value = pcall(function() return object.Value end)
+                addRankRecord("  " .. formatRecord(object)
+                    .. (ok and (" = " .. safeValue(value)) or " = [unreadable]"))
+                count += 1
+                if count >= 25 then
+                    table.insert(rankRecords, "  (player entries capped at 25)")
+                    break
+                end
+            end
+        end
+        if count == 0 then table.insert(rankRecords, "  (no obvious rank fields)") end
+    end
+    table.insert(rankRecords, "")
+    table.insert(rankRecords, "Rank-related object values may be display-only.")
+    table.insert(rankRecords, "Only the game server decides real permissions.")
     table.sort(remoteRecords)
     table.sort(toolRecords)
     table.sort(signalRecords)
     table.sort(matchesFound)
+    categories.Ranks = rankRecords
     categories.Remotes = remoteRecords
     categories.Tools = toolRecords
     categories.Signals = signalRecords
 
     local summary = {
-        "FIO DEX AUDIT 0.1.0",
+        "FIO DEX AUDIT 0.2.0",
         "PlaceId: " .. tostring(game.PlaceId),
         "CLIENT-VISIBLE OBJECTS ONLY",
         "",
@@ -256,6 +324,7 @@ local function scan()
         "Remotes found: " .. remoteCount,
         "Tools found: " .. toolCount,
         "Prompts/click detectors: " .. signalCount,
+        "Rank-related candidates: " .. rankCandidateCount,
         "",
         "POTENTIAL AREAS TO INVESTIGATE",
         "(Keywords are hints, NOT verified exploits.)"
@@ -335,5 +404,5 @@ local function destroy()
     end
 end
 connect(close.MouseButton1Click, destroy)
-env.FIO_DEX_AUDIT = {Destroy = destroy, Version = "0.1.0"}
+env.FIO_DEX_AUDIT = {Destroy = destroy, Version = "0.2.0"}
 task.spawn(scan)
