@@ -31,6 +31,18 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/fio/feat/fio-
 
 After the PR merges, change `feat/fio-hub-starter` to `main`.
 
+## Client Anti-Lag (v0.4.0)
+
+The **Visuals** tab includes an opt-in **Client Anti-Lag** toggle. This does not flood the server or create any parts. When enabled with other players present, it watches **newly replicated** generic building parts (named `Part`, `Block`, `Cylinder`, `Wedge`, or `CornerWedge`) directly in Workspace or generic top-level building models.
+
+- It ignores existing map parts and player characters.
+- Only after **24 matching new parts in two seconds**, it locally removes that burst and subsequently arriving matching parts while the burst continues.
+- The removals affect only the local Roblox client; other players and the authoritative game server are unaffected.
+- It automatically stops and disconnects its listener once no other players remain.
+- It can also be disabled manually, or is cleaned up on hub unload/re-execution.
+
+**Limitations:** Since the live game has not been inspected, these generic part names are a conservative heuristic, not a confirmed First Is Owner debris signature. Some clutter might not be caught; rapidly spawned legitimate building pieces with the same names might be removed from your local view. Locally destroyed objects are **not automatically restored** when the toggle is turned off, although streaming or rejoining may reload them. No server load/spam feature is included.
+
 ## Dex Audit (read-only diagnostic)
 
 Run the separate scanner in First Is Owner:
