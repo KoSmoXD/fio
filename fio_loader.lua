@@ -111,8 +111,11 @@ local function boot()
         status.Text = "Running fio.lua..."
         chunk()
         local existing = playerGui:FindFirstChild("FIO_Hub")
-        if not existing or not existing:FindFirstChild("Window") then
-            error("fio.lua returned without creating the hub window.")
+        local env = (type(getgenv) == "function" and getgenv()) or _G
+        if not existing or not existing:FindFirstChild("Window")
+            or not (type(env.FIO_HUB) == "table"
+                and type(env.FIO_HUB.Destroy) == "function") then
+            error("fio.lua did not complete initialization; check the reported error.")
         end
         status.Text = "FIO Hub loaded successfully."
     end)
