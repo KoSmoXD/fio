@@ -61,6 +61,17 @@ The **Visuals** tab includes an opt-in **Client Anti-Lag** toggle. This does not
 
 **Limitations:** Since the live game has not been inspected, these generic part names are a conservative heuristic, not a confirmed First Is Owner debris signature. Some clutter might not be caught; rapidly spawned legitimate building pieces with the same names might be removed from your local view. Locally destroyed objects are **not automatically restored** when the toggle is turned off, although streaming or rejoining may reload them. No server load/spam feature is included.
 
+## Premium Feature (v0.5.2)
+
+The **Exploits** tab now has a **Premium Feature: ON/OFF** toggle alongside Workspace Helper.
+
+- Your original [`premiumfeature.lua`](https://github.com/KoSmoXD/fio/blob/feat/fio-hub-starter/premiumfeature.lua) remains in the repository, **unchanged**. It is not executed by the hub.
+- The toggle runs [`premium_preview.lua`](https://github.com/KoSmoXD/fio/blob/feat/fio-hub-starter/premium_preview.lua), a bounded **client-only** diagnostic with up to 24 temporary local nodes.
+- OFF, hub unload, and departure of everyone who was present when the feature was enabled stop the preview and clean up the temporary folder.
+- The preview does **not** flood BTools or replicate parts to other players. It is not a public-server load generator.
+
+Use [`fio_loader.lua`](https://github.com/KoSmoXD/fio/blob/feat/fio-hub-starter/fio_loader.lua) for visible startup errors.
+
 ## Editable Workspace Helper toggle (v0.5.0)
 
 The **Exploits** tab contains a new **Workspace Helper** ON/OFF toggle. The hub does not include the previously proposed high-volume part spawning loop.
