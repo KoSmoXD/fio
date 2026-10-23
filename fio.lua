@@ -132,8 +132,8 @@ local pages = {}
 local tabButtons = {}
 local function makePage(name, tabIndex)
     local tab = makeButton(name, tabsBar,
-        UDim2.new((tabIndex - 1) / 3, 0, 0, 0),
-        UDim2.new(1 / 3, -4, 1, 0))
+        UDim2.new((tabIndex - 1) / 4, 0, 0, 0),
+        UDim2.new(1 / 4, -4, 1, 0))
     tabButtons[name] = tab
     local page = create("Frame", {
         Name = name,
@@ -147,6 +147,7 @@ end
 local home = makePage("Home", 1)
 local playersPage = makePage("Players", 2)
 local visuals = makePage("Visuals", 3)
+local exploits = makePage("Exploits", 4)
 
 local function showTab(name)
     for tabName, page in pairs(pages) do
@@ -354,6 +355,266 @@ for index, speed in ipairs(speeds) do
     end)
 end
 
+-- Exploits
+local RunService = game:GetService("RunService")
+local exploitEnabled = {
+    Fly = false,
+    Noclip = false,
+    InfiniteJump = false,
+    PlayerESP = false,
+    ClickTP = false,
+    AntiFling = false
+}
+local exploitButtons = {}
+local flyBody = nil
+local flyRoot = nil
+local flyUpHeld = false
+local flyDownHeld = false
+local flySpeed = 48
+local collisionStates = {}
+local espHighlights = {}
+
+label("EXPLOITS", exploits,
+    UDim2.fromOffset(13, 10), UDim2.new(1, -26, 0, 24), 16, true)
+label("Local movement and visibility tools. Server checks may override them.",
+    exploits, UDim2.fromOffset(13, 38), UDim2.new(1, -26, 0, 34), 12)
+
+local flyUpButton = makeButton("UP", gui,
+    UDim2.new(1, -66, 0.5, -70), UDim2.fromOffset(54, 48))
+local flyDownButton = makeButton("DOWN", gui,
+    UDim2.new(1, -66, 0.5, -15), UDim2.fromOffset(54, 48))
+flyUpButton.Visible = false
+flyDownButton.Visible = false
+
+local function bindHold(button, setter)
+    track(button.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            setter(true)
+        end
+    end)
+    track(button.InputEnded, function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            setter(false)
+        end
+    end)
+end
+bindHold(flyUpButton, function(value) flyUpHeld = value end)
+bindHold(flyDownButton, function(value) flyDownHeld = value end)
+
+local function stopFly()
+    exploitEnabled.Fly = false
+    if flyBody then flyBody:Destroy() flyBody = nil end
+    flyRoot = nil
+    flyUpHeld, flyDownHeld = false, false
+    flyUpButton.Visible = false
+    flyDownButton.Visible = false
+    if exploitButtons.Fly then exploitButtons.Fly.Text = "Fly: OFF" end
+end
+
+local function startFly()
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = ownHumanoid()
+    if not root or not humanoid then
+        setStatus("Fly requires a spawned character")
+        return false
+    end
+    stopFly()
+    flyRoot = root
+    flyBody = create("BodyVelocity", {
+        Name = "FIO_Fly",
+        MaxForce = Vector3.new(1e7, 1e7, 1e7),
+        P = 7500,
+        Velocity = Vector3.zero
+    }, root)
+    exploitEnabled.Fly = true
+    flyUpButton.Visible = true
+    flyDownButton.Visible = true
+    return true
+end
+
+local function stopNoclip()
+    exploitEnabled.Noclip = false
+    for part, original in pairs(collisionStates) do
+        if part and part.Parent then part.CanCollide = original end
+        collisionStates[part] = nil
+    end
+end
+
+local function clearEsp()
+    exploitEnabled.PlayerESP = false
+    for player, highlight in pairs(espHighlights) do
+        if highlight then highlight:Destroy() end
+        espHighlights[player] = nil
+    end
+end
+
+local function refreshEsp()
+    if not exploitEnabled.PlayerESP then return end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            local character = player.Character
+            local old = espHighlights[player]
+            if old and (not old.Parent or old.Adornee ~= character) then
+                old:Destroy()
+                espHighlights[player] = nil
+            end
+            if character and not espHighlights[player] then
+                local highlight = create("Highlight", {
+                    Name = "FIO_PlayerESP",
+                    FillColor = Color3.fromRGB(255, 200, 50),
+                    OutlineColor = Color3.fromRGB(255, 255, 255),
+                    FillTransparency = 0.75,
+                    OutlineTransparency = 0,
+                    DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+                    Adornee = character
+                }, character)
+                espHighlights[player] = highlight
+            end
+        end
+    end
+    for player, highlight in pairs(espHighlights) do
+        if not player.Parent then
+            highlight:Destroy()
+            espHighlights[player] = nil
+        end
+    end
+end
+
+local featureNames = {
+    {"Fly", "Fly"},
+    {"Noclip", "Noclip"},
+    {"InfiniteJump", "Infinite jump"},
+    {"PlayerESP", "Player ESP"},
+    {"ClickTP", "Click teleport"},
+    {"AntiFling", "Anti-fling"}
+}
+for index, feature in ipairs(featureNames) do
+    local key, display = feature[1], feature[2]
+    local rowNumber = math.floor((index - 1) / 2)
+    local colNumber = (index - 1) % 2
+    local button = makeButton(display .. ": OFF", exploits,
+        UDim2.new(colNumber * 0.5, 13 + colNumber * 3, 0, 78 + rowNumber * 47),
+        UDim2.new(0.5, -22, 0, 36))
+    exploitButtons[key] = button
+    button.MouseButton1Click:Connect(function()
+        local newValue = not exploitEnabled[key]
+        if key == "Fly" then
+            if newValue then
+                newValue = startFly()
+            else
+                stopFly()
+            end
+        elseif key == "Noclip" and not newValue then
+            stopNoclip()
+        elseif key == "PlayerESP" then
+            if newValue then
+                exploitEnabled.PlayerESP = true
+                refreshEsp()
+            else
+                clearEsp()
+            end
+        end
+        exploitEnabled[key] = newValue
+        button.Text = display .. (newValue and ": ON" or ": OFF")
+        if newValue or key ~= "Fly" then setStatus(button.Text) end
+    end)
+end
+label("Fly: WASD / joystick + E or Space to rise, Q to descend. Mobile: UP / DOWN.",
+    exploits, UDim2.fromOffset(13, 219), UDim2.new(1, -26, 0, 40), 12)
+
+track(RunService.Heartbeat, function()
+    if exploitEnabled.Fly then
+        local humanoid = ownHumanoid()
+        if not flyBody or not flyBody.Parent or not flyRoot or not flyRoot.Parent
+            or not humanoid then
+            stopFly()
+        else
+            local rising = flyUpHeld
+                or UserInputService:IsKeyDown(Enum.KeyCode.E)
+                or UserInputService:IsKeyDown(Enum.KeyCode.Space)
+            local falling = flyDownHeld
+                or UserInputService:IsKeyDown(Enum.KeyCode.Q)
+            local vertical = (rising and 1 or 0) - (falling and 1 or 0)
+            flyBody.Velocity = humanoid.MoveDirection * flySpeed
+                + Vector3.new(0, vertical * flySpeed, 0)
+        end
+    end
+    if exploitEnabled.AntiFling then
+        local character = localPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if root and root.AssemblyLinearVelocity.Magnitude > 120 then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+end)
+
+track(RunService.Stepped, function()
+    if not exploitEnabled.Noclip then return end
+    local character = localPlayer.Character
+    if not character then return end
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if collisionStates[part] == nil then
+                collisionStates[part] = part.CanCollide
+            end
+            part.CanCollide = false
+        end
+    end
+end)
+
+track(UserInputService.JumpRequest, function()
+    if not exploitEnabled.InfiniteJump then return end
+    local humanoid = ownHumanoid()
+    if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
+end)
+
+track(UserInputService.InputBegan, function(input, processed)
+    if processed or not exploitEnabled.ClickTP then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then return end
+    local camera = workspace.CurrentCamera
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not camera or not root then return end
+    local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
+    local parameters = RaycastParams.new()
+    parameters.FilterType = Enum.RaycastFilterType.Exclude
+    parameters.FilterDescendantsInstances = {character}
+    local result = workspace:Raycast(ray.Origin, ray.Direction * 1500, parameters)
+    if result then
+        local originalRotation = root.CFrame - root.Position
+        root.CFrame = CFrame.new(result.Position + Vector3.new(0, 3.5, 0))
+            * originalRotation
+        setStatus("Local click teleport attempted")
+    end
+end)
+
+local espAccumulator = 0
+track(RunService.Heartbeat, function(dt)
+    espAccumulator = espAccumulator + dt
+    if espAccumulator >= 1 then
+        espAccumulator = 0
+        refreshEsp()
+    end
+end)
+track(localPlayer.CharacterRemoving, function()
+    if exploitEnabled.Fly then stopFly() end
+    if exploitEnabled.Noclip then stopNoclip() end
+end)
+
+local function stopExploits()
+    stopFly()
+    stopNoclip()
+    clearEsp()
+    exploitEnabled.InfiniteJump = false
+    exploitEnabled.ClickTP = false
+    exploitEnabled.AntiFling = false
+end
+
 -- Window controls / unload
 local function setWindowVisible(visible)
     window.Visible = visible
@@ -403,6 +664,7 @@ local destroyed = false
 local function destroy()
     if destroyed then return end
     destroyed = true
+    stopExploits()
     if brightEnabled then setFullbright(false) end
     if spectating then stopSpectate() end
     for _, connection in ipairs(connections) do
@@ -413,7 +675,7 @@ local function destroy()
         environment.FIO_HUB = nil
     end
 end
-environment.FIO_HUB = {Destroy = destroy, Version = "0.1.0"}
+environment.FIO_HUB = {Destroy = destroy, Version = "0.2.0"}
 unloadButton.MouseButton1Click:Connect(destroy)
 showTab("Home")
-print("[FIO] Hub v0.1.0 loaded")
+print("[FIO] Hub v0.2.0 loaded")
