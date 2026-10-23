@@ -148,7 +148,7 @@ local home = makePage("Home", 1)
 local playersPage = makePage("Players", 2)
 local visuals = makePage("Visuals", 3)
 local exploits = makePage("Exploits", 4)
--- The BTools page is initialized after the shared UI and player helpers.
+local btools = makePage("BTools", 5)
 
 local function showTab(name)
     for tabName, page in pairs(pages) do
@@ -619,7 +619,6 @@ end
 
 -- BTools integrations (F3X-compatible endpoints only).
 -- These actions never bypass the game's server-side edit permissions.
-local btools = makePage("BTools", 5)
 local antiJail = false
 local killTouch = false
 local glitchTitle = false
@@ -641,7 +640,7 @@ local btoolStatus = label("BTools: not checked", btools,
 local function findBtools()
     local character = localPlayer.Character
     local backpack = localPlayer:FindFirstChildOfClass("Backpack")
-    for _, location in ipairs({character, backpack}) do
+    for _, location in ipairs({character or false, backpack or false}) do
         if location then
             for _, item in ipairs(location:GetChildren()) do
                 if item:IsA("Tool") then
@@ -899,7 +898,7 @@ glitchTitleButton.MouseButton1Click:Connect(function()
 end)
 
 label("Anti Jail / Kill Touch: server permission required.\nTitle: cosmetic and visible only to you.",
-    btools, UDim2.fromOffset(13, 242), UDim2.new(1, -26, 0, 26), 11)
+    btools, UDim2.fromOffset(13, 235), UDim2.new(1, -26, 0, 26), 11)
 
 local jailElapsed = 0
 track(RunService.Heartbeat, function(dt)
